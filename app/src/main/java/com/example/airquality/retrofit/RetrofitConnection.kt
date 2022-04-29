@@ -10,6 +10,7 @@ class RetrofitConnection {
         private var INSTANCE: Retrofit? = null
 
         fun getInstance(): Retrofit {
+
             if(INSTANCE == null) {
                 INSTANCE = Retrofit.Builder()
                     .baseUrl(BASE_URL)

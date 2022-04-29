@@ -1,4 +1,4 @@
-package com.example.airquality
+package com.example.airquality.utils
 
 import android.Manifest
 import android.content.Context
@@ -18,6 +18,7 @@ class LocationProvider(val context: Context) {
     init {
         getLocation()
     }
+
 
     private fun getLocation(): Location?  {
         try{
