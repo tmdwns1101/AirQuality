@@ -18,13 +18,19 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleCoroutineScope
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import com.example.airquality.R
 import com.example.airquality.databinding.ActivityMainBinding
 import com.example.airquality.model.AirQualityData
 import com.example.airquality.model.LatLonData
+import com.example.airquality.repository.Repository
+import com.example.airquality.repository.room.entity.RecentLocation
 import com.example.airquality.utils.LocationProvider
 import com.example.airquality.viewModels.MainViewModel
+import kotlinx.coroutines.launch
 import java.io.IOException
 import java.lang.IllegalArgumentException
 import java.time.ZoneId
@@ -36,6 +42,7 @@ import java.util.*
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
 
     private val PERMISSIONS_REQUEST_CODE = 100
 
@@ -49,10 +56,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var locationProvider: LocationProvider
 
     private val mainViewModel: MainViewModel by lazy {
-        ViewModelProvider(this,MainViewModel.Factory(application))[MainViewModel::class.java]
+        ViewModelProvider(this, MainViewModel.Factory(application))[MainViewModel::class.java]
     }
 
     private lateinit var startMapActivityResultLauncher: ActivityResultLauncher<Intent>
+    private lateinit var startRecentLocationActivity: ActivityResultLauncher<Intent>
+
+    private val repository: Repository by lazy {
+        Repository.getInstance(application)!!
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,32 +76,59 @@ class MainActivity : AppCompatActivity() {
                 if (result?.resultCode ?: 0 == Activity.RESULT_OK) {
                     var latitude = result?.data?.getDoubleExtra("latitude", 0.0) ?: 0.0
                     var longitude = result?.data?.getDoubleExtra("longitude", 0.0) ?: 0.0
+//
+//                    Log.d("return to Main", longitude.toString())
+                    var address = getCurrentAddress(latitude, longitude)
+//
+                    var title = address?.thoroughfare
+                    var subTitle = address?.countryName.plus(" ").plus(address?.adminArea)
+//
+//
+//                    var latLonData = LatLonData(latitude,longitude)
+//
+//                    updateLatLon(latLonData)
+//                    updateUI(latLonData)
 
-                    Log.d("return to Main", longitude.toString())
-
-                    var latLonData = LatLonData(latitude,longitude)
-                    updateLatLon(latLonData)
-                    updateUI(latLonData)
+                    val recentLocation: RecentLocation =
+                        RecentLocation(null, title, subTitle, latitude, longitude)
+                    lifecycleScope.launch {
+                        repository.createRecentLocation(recentLocation)
+                    }
+                    var latLonData = LatLonData(latitude, longitude)
+                    updateProcess(latLonData)
                 }
             }
+
+        startRecentLocationActivity =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                if (result?.resultCode ?: 0 == Activity.RESULT_OK) {
+                    var latitude = result?.data?.getDoubleExtra("latitude", 0.0) ?: 0.0
+                    var longitude = result?.data?.getDoubleExtra("longitude", 0.0) ?: 0.0
+                    var latLonData = LatLonData(latitude, longitude)
+                    updateProcess(latLonData)
+                }
+
+            }
+
         mainViewModel.latLon.observe(this) {
-            Log.d("viewmodel-latlon",it.toString())
+            Log.d("viewmodel-latlon", it.toString())
             updateUI(it)
         }
         mainViewModel.airQuality.observe(this) {
-            Toast.makeText(this,"최신 정보 업데이트 완료!", Toast.LENGTH_LONG).show()
-            Log.d("viewmodel-air",it.toString())
+            Toast.makeText(this, "최신 정보 업데이트 완료!", Toast.LENGTH_LONG).show()
+            Log.d("viewmodel-air", it.toString())
             updateAirUI(it)
         }
 
         mainViewModel.errorMessage.observe(this) {
-            Toast.makeText(this,it, Toast.LENGTH_LONG).show()
+            Toast.makeText(this, it, Toast.LENGTH_LONG).show()
         }
 
         checkAllPermissions() //권한 확인
         updateLatLon(null) //위치 업데이트
         setRefreshButton() //새로고침
         setFab() //구글 맵 화면 이동
+        setHistory() //최근 조회 장소 화면 이동
     }
 
     private fun checkAllPermissions() {
@@ -197,6 +236,16 @@ class MainActivity : AppCompatActivity() {
         builder.create().show()
     }
 
+    private fun updateProcess(latLonData: LatLonData) {
+        var latitude = latLonData.latitude
+        var longitude = latLonData.longitude
+
+        var latLonData = LatLonData(latitude, longitude)
+
+        updateLatLon(latLonData)
+        updateUI(latLonData)
+    }
+
     private fun updateLatLon(latLonData: LatLonData?) {
         locationProvider = LocationProvider(this@MainActivity)
 
@@ -248,6 +297,13 @@ class MainActivity : AppCompatActivity() {
             intent.putExtra("currentLat", mainViewModel.latLon.value?.latitude)
             intent.putExtra("currentLng", mainViewModel.latLon.value?.longitude)
             startMapActivityResultLauncher.launch(intent)
+        }
+    }
+
+    private fun setHistory() {
+        binding.recentLocation.setOnClickListener {
+            val intent = Intent(this, RecentLocationActivity::class.java)
+            startRecentLocationActivity.launch(intent)
         }
     }
 
@@ -308,6 +364,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
 
 }
 

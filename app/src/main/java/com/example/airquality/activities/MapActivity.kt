@@ -19,6 +19,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     private lateinit var binding: ActivityMapBinding
 
+
     private var mMap: GoogleMap? = null
 
     private var currentLat: Double = 0.0 //Main 액티비티로 부터 전달받은 위도
@@ -27,7 +28,6 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding = ActivityMapBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -44,6 +44,7 @@ class MapActivity : AppCompatActivity(), OnMapReadyCallback {
 
         binding.btnCheckHere.setOnClickListener {
             mMap?.let {
+
                 val intent = Intent()
                 intent.putExtra("latitude",it.cameraPosition.target.latitude)
                 intent.putExtra("longitude",it.cameraPosition.target.longitude)

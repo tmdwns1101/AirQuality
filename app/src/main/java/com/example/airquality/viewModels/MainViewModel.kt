@@ -14,17 +14,20 @@ class MainViewModel(private val repository: Repository) : ViewModel() {
     private val _airQuality: MutableLiveData<AirQualityData> = MutableLiveData()
     private val _errorMessage: MutableLiveData<String> = MutableLiveData()
 
-
-
     val latLon: LiveData<LatLonData>
         get() = _latLon
     val airQuality: LiveData<AirQualityData>
         get() = _airQuality
 
+
+
     val errorMessage: LiveData<String>
         get() = _errorMessage
+
+
     init {
         _latLon.value = LatLonData(0.0, 0.0)
+
 
     }
 

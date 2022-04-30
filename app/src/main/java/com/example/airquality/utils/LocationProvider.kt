@@ -90,4 +90,6 @@ class LocationProvider(val context: Context) {
     fun getLocationLongitude(): Double {
         return location?.longitude ?: 0.0
     }
+
+
 }
