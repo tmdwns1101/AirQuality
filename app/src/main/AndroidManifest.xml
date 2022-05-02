@@ -14,10 +14,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AirQuality">
         <activity
-            android:name=".MapActivity"
+            android:name=".activities.RecentLocationActivity"
             android:exported="false" />
         <activity
-            android:name=".MainActivity"
+            android:name=".activities.MapActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

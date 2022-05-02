@@ -1,4 +1,4 @@
-package com.example.airquality
+package com.example.airquality.activities
 
 import android.Manifest
 import android.app.Activity
@@ -18,10 +18,19 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleCoroutineScope
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import com.example.airquality.R
 import com.example.airquality.databinding.ActivityMainBinding
-import com.example.airquality.retrofit.AirQualityProvider
-import com.example.airquality.retrofit.AirQualityResponse
-import retrofit2.Response
+import com.example.airquality.model.AirQualityData
+import com.example.airquality.model.LatLonData
+import com.example.airquality.repository.Repository
+import com.example.airquality.repository.room.entity.RecentLocation
+import com.example.airquality.utils.LocationProvider
+import com.example.airquality.viewModels.MainViewModel
+import kotlinx.coroutines.launch
 import java.io.IOException
 import java.lang.IllegalArgumentException
 import java.time.ZoneId
@@ -34,6 +43,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
+
     private val PERMISSIONS_REQUEST_CODE = 100
 
     private var REQUIRED_PERMISSIONS = arrayOf(
@@ -45,29 +55,80 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var locationProvider: LocationProvider
 
-    private var latitude: Double = 0.0
-    private var longitude: Double = 0.0
+    private val mainViewModel: MainViewModel by lazy {
+        ViewModelProvider(this, MainViewModel.Factory(application))[MainViewModel::class.java]
+    }
 
     private lateinit var startMapActivityResultLauncher: ActivityResultLauncher<Intent>
+    private lateinit var startRecentLocationActivity: ActivityResultLauncher<Intent>
+
+    private val repository: Repository by lazy {
+        Repository.getInstance(application)!!
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        startMapActivityResultLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-            if(result?.resultCode ?: 0 == Activity.RESULT_OK) {
-                latitude = result?.data?.getDoubleExtra("latitude",0.0) ?: 0.0
-                longitude = result?.data?.getDoubleExtra("longitude",0.0) ?: 0.0
-                updateUI()
+        startMapActivityResultLauncher =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                if (result?.resultCode ?: 0 == Activity.RESULT_OK) {
+                    var latitude = result?.data?.getDoubleExtra("latitude", 0.0) ?: 0.0
+                    var longitude = result?.data?.getDoubleExtra("longitude", 0.0) ?: 0.0
+//
+//                    Log.d("return to Main", longitude.toString())
+                    var address = getCurrentAddress(latitude, longitude)
+//
+                    var title = address?.thoroughfare
+                    var subTitle = address?.countryName.plus(" ").plus(address?.adminArea)
+//
+//
+//                    var latLonData = LatLonData(latitude,longitude)
+//
+//                    updateLatLon(latLonData)
+//                    updateUI(latLonData)
+
+                    val recentLocation: RecentLocation =
+                        RecentLocation(null, title, subTitle, latitude, longitude)
+                    lifecycleScope.launch {
+                        repository.createRecentLocation(recentLocation)
+                    }
+                    var latLonData = LatLonData(latitude, longitude)
+                    updateProcess(latLonData)
+                }
             }
+
+        startRecentLocationActivity =
+            registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+                if (result?.resultCode ?: 0 == Activity.RESULT_OK) {
+                    var latitude = result?.data?.getDoubleExtra("latitude", 0.0) ?: 0.0
+                    var longitude = result?.data?.getDoubleExtra("longitude", 0.0) ?: 0.0
+                    var latLonData = LatLonData(latitude, longitude)
+                    updateProcess(latLonData)
+                }
+
+            }
+
+        mainViewModel.latLon.observe(this) {
+            Log.d("viewmodel-latlon", it.toString())
+            updateUI(it)
+        }
+        mainViewModel.airQuality.observe(this) {
+            Toast.makeText(this, "최신 정보 업데이트 완료!", Toast.LENGTH_LONG).show()
+            Log.d("viewmodel-air", it.toString())
+            updateAirUI(it)
         }
 
+        mainViewModel.errorMessage.observe(this) {
+            Toast.makeText(this, it, Toast.LENGTH_LONG).show()
+        }
 
         checkAllPermissions() //권한 확인
-        updateUI() //화면 업데이트
+        updateLatLon(null) //위치 업데이트
         setRefreshButton() //새로고침
         setFab() //구글 맵 화면 이동
+        setHistory() //최근 조회 장소 화면 이동
     }
 
     private fun checkAllPermissions() {
@@ -127,7 +188,7 @@ class MainActivity : AppCompatActivity() {
             }
             if (checkResult) {
                 //위치 값을 가져오기
-                updateUI()
+                updateLatLon(null)
             } else {
                 Toast.makeText(
                     this@MainActivity,
@@ -175,18 +236,35 @@ class MainActivity : AppCompatActivity() {
         builder.create().show()
     }
 
+    private fun updateProcess(latLonData: LatLonData) {
+        var latitude = latLonData.latitude
+        var longitude = latLonData.longitude
 
-    private fun updateUI() {
+        var latLonData = LatLonData(latitude, longitude)
+
+        updateLatLon(latLonData)
+        updateUI(latLonData)
+    }
+
+    private fun updateLatLon(latLonData: LatLonData?) {
         locationProvider = LocationProvider(this@MainActivity)
+
+        var latitude = latLonData?.latitude ?: 0.0
+        var longitude = latLonData?.longitude ?: 0.0
 
         //위도와 경도 정보를 가져온다.
         if (latitude == 0.0 || longitude == 0.0) {
             latitude = locationProvider.getlocationLatitude()
             longitude = locationProvider.getLocationLongitude()
         }
+        Log.d("MainActivity", "latitude: $latitude")
+        Log.d("MainActivity", "longitude: $longitude")
+        mainViewModel.updateLatLon(latitude, longitude)
+    }
 
-        Log.d("updateUI", "latitude : $latitude")
-
+    fun updateUI(latLonData: LatLonData) {
+        var latitude = latLonData.latitude
+        var longitude = latLonData.longitude
         if (latitude != 0.0 || longitude != 0.0) {
             //1. 현재 위치를 가져오고 UI 업데이트
             val address = getCurrentAddress(latitude, longitude)
@@ -194,20 +272,10 @@ class MainActivity : AppCompatActivity() {
                 binding.tvLocationTitle.text = "${it.thoroughfare}"
                 binding.tvLocationSubtitle.text = "${it.countryName} ${it.adminArea}"
             }
-            //2. 현재 미세먼지 농도 가져오고 UI 업데이트
-            var successHandler: (Response<AirQualityResponse>) -> Unit = { response ->
-                Toast.makeText(this@MainActivity, "최신 정보 업데이트 완료!", Toast.LENGTH_LONG).show()
-                response.body()?.let { updateAirUI(it) }
-            }
-            var failureHandler: () -> Unit = {
-                Toast.makeText(this@MainActivity, "업데이트에 실패하였습니다.", Toast.LENGTH_LONG).show()
-            }
-            AirQualityProvider.getAirQualityData(
-                latitude,
-                longitude,
-                successHandler,
-                failureHandler
-            )
+
+            //2. 현재 미세먼지 농도 가져오기
+            mainViewModel.updateAirQuality(latitude, longitude)
+
         } else {
             Toast.makeText(this@MainActivity, "위도, 경도 정보를 가져올 수 없습니다.", Toast.LENGTH_LONG).show()
         }
@@ -216,7 +284,9 @@ class MainActivity : AppCompatActivity() {
     //미세머진 새로고침 버튼 이벤트
     private fun setRefreshButton() {
         binding.btnRefresh.setOnClickListener {
-            updateUI()
+            var latitude = mainViewModel.latLon.value!!.latitude
+            var longitude = mainViewModel.latLon.value!!.longitude
+            mainViewModel.updateAirQuality(latitude, longitude)
         }
     }
 
@@ -224,19 +294,26 @@ class MainActivity : AppCompatActivity() {
     private fun setFab() {
         binding.fab.setOnClickListener {
             val intent = Intent(this, MapActivity::class.java)
-            intent.putExtra("currentLat",latitude)
-            intent.putExtra("currentLng",longitude)
+            intent.putExtra("currentLat", mainViewModel.latLon.value?.latitude)
+            intent.putExtra("currentLng", mainViewModel.latLon.value?.longitude)
             startMapActivityResultLauncher.launch(intent)
         }
     }
 
-    private fun getCurrentAddress(latitude: Double, longtitude: Double): Address? {
+    private fun setHistory() {
+        binding.recentLocation.setOnClickListener {
+            val intent = Intent(this, RecentLocationActivity::class.java)
+            startRecentLocationActivity.launch(intent)
+        }
+    }
+
+    private fun getCurrentAddress(latitude: Double, longitude: Double): Address? {
         val geocoder = Geocoder(this, Locale.getDefault())
 
         val addresses: List<Address>?
 
         addresses = try {
-            geocoder.getFromLocation(latitude, longtitude, 7)
+            geocoder.getFromLocation(latitude, longitude, 7)
         } catch (ioException: IOException) {
             Toast.makeText(this, "지오코더 서비스 사용불가합니다.", Toast.LENGTH_LONG).show()
             return null
@@ -255,7 +332,8 @@ class MainActivity : AppCompatActivity() {
         return address
     }
 
-    private fun updateAirUI(airQualityData: AirQualityResponse) {
+    private fun updateAirUI(airQualityData: AirQualityData) {
+
         val pollutionData = airQualityData.data.current.pollution
 
         binding.tvCount.text = pollutionData.aqius.toString()
@@ -287,4 +365,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
 }
+
